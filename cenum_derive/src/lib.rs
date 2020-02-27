@@ -80,32 +80,40 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         #ast
 
         static #data_name: &'static [(#name, usize)] = &#pairs_parsed;
-        static mut #cache_name: Option<::std::collections::HashMap<#name, usize>> = None;
-        static mut #icache_name: Option<::std::collections::HashMap<usize, #name>> = None;
+        static #cache_name: ::std::sync::atomic::AtomicPtr<::std::collections::HashMap<#name, usize>> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
+        static #icache_name: ::std::sync::atomic::AtomicPtr<::std::collections::HashMap<usize, #name>> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
 
         #[allow(non_snake_case)]
         fn #get_cache_name() -> &'static ::std::collections::HashMap<#name, usize> {
             unsafe {
-                if #cache_name.is_none() {
-                    #cache_name = Some(::std::collections::HashMap::new());
+                if #cache_name.load(::std::sync::atomic::Ordering::Relaxed) == ::std::ptr::null_mut() {
+                    let mut map_built = Box::new(::std::collections::HashMap::new());
                     for (key, value) in #data_name {
-                        #cache_name.as_mut().unwrap().insert(key.clone(), *value);
+                        map_built.insert(key.clone(), *value);
+                    }
+                    let map_built = Box::into_raw(map_built);
+                    if #cache_name.compare_and_swap(::std::ptr::null_mut(), map_built, ::std::sync::atomic::Ordering::Relaxed) != ::std::ptr::null_mut() {
+                        drop(Box::from_raw(map_built));
                     }
                 }
-                return #cache_name.as_ref().unwrap();
+                return #cache_name.load(::std::sync::atomic::Ordering::Relaxed).as_ref().unwrap();
             }
         }
 
         #[allow(non_snake_case)]
         fn #get_icache_name() -> &'static ::std::collections::HashMap<usize, #name> {
             unsafe {
-                if #icache_name.is_none() {
-                    #icache_name = Some(::std::collections::HashMap::new());
+                if #icache_name.load(::std::sync::atomic::Ordering::Relaxed) == ::std::ptr::null_mut() {
+                    let mut map_built = Box::new(::std::collections::HashMap::new());
                     for (key, value) in #data_name {
-                        #icache_name.as_mut().unwrap().insert(*value, key.clone());
+                        map_built.insert(*value, key.clone());
+                    }
+                    let map_built = Box::into_raw(map_built);
+                    if #icache_name.compare_and_swap(::std::ptr::null_mut(), map_built, ::std::sync::atomic::Ordering::Relaxed) != ::std::ptr::null_mut() {
+                        drop(Box::from_raw(map_built));
                     }
                 }
-                return #icache_name.as_ref().unwrap();
+                return #icache_name.load(::std::sync::atomic::Ordering::Relaxed).as_ref().unwrap();
             }
         }
 
