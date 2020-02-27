@@ -1,6 +1,5 @@
 extern crate self as cenum;
 pub use cenum_derive::cenum;
-pub use linked_hash_map;
 pub use num;
 
 pub trait Cenum {

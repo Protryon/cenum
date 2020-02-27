@@ -10,5 +10,4 @@ keywords = [ "primitive", "enum" ]
 
 [dependencies]
 cenum-derive = { path = "./cenum_derive/", version = "1.0.0" }
-linked-hash-map = "0.5.2"
 num = "0.2.1"

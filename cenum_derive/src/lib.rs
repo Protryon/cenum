@@ -1,6 +1,5 @@
 extern crate proc_macro;
 use crate::proc_macro::TokenStream;
-use linked_hash_map::LinkedHashMap;
 use quote::quote;
 use syn::*;
 
@@ -22,7 +21,7 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
     {
         panic!("cannot have cenum trait on enums with fields")
     }
-    let mut pairs: LinkedHashMap<String, usize> = LinkedHashMap::new();
+    let mut pairs: Vec<(String, usize)> = vec![];
     let mut current_discriminant = 0;
     for variant in &variants {
         let discriminant = match &variant.discriminant {
@@ -47,7 +46,7 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
                 discriminant
             }
         };
-        pairs.insert(variant.ident.to_string(), discriminant);
+        pairs.push((variant.ident.to_string(), discriminant));
     }
 
     let pairs_formatted = format!(
@@ -81,14 +80,14 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         #ast
 
         static #data_name: &'static [(#name, usize)] = &#pairs_parsed;
-        static mut #cache_name: Option<::cenum::linked_hash_map::LinkedHashMap<#name, usize>> = None;
-        static mut #icache_name: Option<::cenum::linked_hash_map::LinkedHashMap<usize, #name>> = None;
+        static mut #cache_name: Option<::std::collections::HashMap<#name, usize>> = None;
+        static mut #icache_name: Option<::std::collections::HashMap<usize, #name>> = None;
 
         #[allow(non_snake_case)]
-        fn #get_cache_name() -> &'static ::cenum::linked_hash_map::LinkedHashMap<#name, usize> {
+        fn #get_cache_name() -> &'static ::std::collections::HashMap<#name, usize> {
             unsafe {
                 if #cache_name.is_none() {
-                    #cache_name = Some(::linked_hash_map::LinkedHashMap::new());
+                    #cache_name = Some(::std::collections::HashMap::new());
                     for (key, value) in #data_name {
                         #cache_name.as_mut().unwrap().insert(key.clone(), *value);
                     }
@@ -98,10 +97,10 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         }
 
         #[allow(non_snake_case)]
-        fn #get_icache_name() -> &'static ::cenum::linked_hash_map::LinkedHashMap<usize, #name> {
+        fn #get_icache_name() -> &'static ::std::collections::HashMap<usize, #name> {
             unsafe {
                 if #icache_name.is_none() {
-                    #icache_name = Some(::cenum::linked_hash_map::LinkedHashMap::new());
+                    #icache_name = Some(::std::collections::HashMap::new());
                     for (key, value) in #data_name {
                         #icache_name.as_mut().unwrap().insert(*value, key.clone());
                     }
