@@ -1,0 +1,10 @@
+[package]
+name = "cenum"
+version = "1.0.0"
+authors = ["Protryon <max.bruce12@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+cenum-derive = { path = "./cenum_derive/" }
+linked-hash-map = "0.5.2"
+num = "0.2.1"
