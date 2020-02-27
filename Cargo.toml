@@ -2,9 +2,13 @@
 name = "cenum"
 version = "1.0.0"
 authors = ["Protryon <max.bruce12@gmail.com>"]
+license = "GPL v3.0"
 edition = "2018"
+repository = "https://github.com/Protryon/cenum"
+description = "A rust derive macro for C-style primitive enums."
+keywords = [ "primitive", "enum" ]
 
 [dependencies]
-cenum-derive = { path = "./cenum_derive/" }
+cenum-derive = { path = "./cenum_derive/", version = "1.0.0" }
 linked-hash-map = "0.5.2"
 num = "0.2.1"
