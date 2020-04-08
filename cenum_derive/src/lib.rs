@@ -86,13 +86,13 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         #[allow(non_snake_case)]
         fn #get_cache_name() -> &'static ::std::collections::HashMap<#name, usize> {
             unsafe {
-                if #cache_name.load(::std::sync::atomic::Ordering::Relaxed) == ::std::ptr::null_mut() {
+                if #cache_name.load(::std::sync::atomic::Ordering::Relaxed).is_null() {
                     let mut map_built = Box::new(::std::collections::HashMap::new());
                     for (key, value) in #data_name {
                         map_built.insert(key.clone(), *value);
                     }
                     let map_built = Box::into_raw(map_built);
-                    if #cache_name.compare_and_swap(::std::ptr::null_mut(), map_built, ::std::sync::atomic::Ordering::Relaxed) != ::std::ptr::null_mut() {
+                    if !#cache_name.compare_and_swap(::std::ptr::null_mut(), map_built, ::std::sync::atomic::Ordering::Relaxed).is_null() {
                         drop(Box::from_raw(map_built));
                     }
                 }
@@ -103,13 +103,13 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         #[allow(non_snake_case)]
         fn #get_icache_name() -> &'static ::std::collections::HashMap<usize, #name> {
             unsafe {
-                if #icache_name.load(::std::sync::atomic::Ordering::Relaxed) == ::std::ptr::null_mut() {
+                if #icache_name.load(::std::sync::atomic::Ordering::Relaxed).is_null() {
                     let mut map_built = Box::new(::std::collections::HashMap::new());
                     for (key, value) in #data_name {
                         map_built.insert(*value, key.clone());
                     }
                     let map_built = Box::into_raw(map_built);
-                    if #icache_name.compare_and_swap(::std::ptr::null_mut(), map_built, ::std::sync::atomic::Ordering::Relaxed) != ::std::ptr::null_mut() {
+                    if !#icache_name.compare_and_swap(::std::ptr::null_mut(), map_built, ::std::sync::atomic::Ordering::Relaxed).is_null() {
                         drop(Box::from_raw(map_built));
                     }
                 }
