@@ -3,9 +3,9 @@ pub use cenum_derive::cenum;
 pub use num;
 
 pub trait Cenum {
-    fn to_primitive(&self) -> usize;
-    fn from_primitive(value: usize) -> Self;
-    fn is_discriminant(value: usize) -> bool;
+    fn to_primitive(&self) -> i64;
+    fn from_primitive(value: i64) -> Self;
+    fn is_discriminant(value: i64) -> bool;
 }
 
 #[cfg(test)]
@@ -61,5 +61,22 @@ mod tests {
         assert_eq!(TestEnumDeterminant::is_discriminant(0), true);
         assert_eq!(TestEnumDeterminant::is_discriminant(3), false);
         assert_eq!(TestEnumDeterminant::is_discriminant(9), false);
+    }
+
+    #[cenum]
+    enum TestEnumNegative {
+        Value1 = -3,
+        Value2 = 7,
+    }
+
+    #[test]
+    fn enum_negative() {
+        assert_eq!(TestEnumNegative::is_discriminant(-3), true);
+        assert_eq!(TestEnumNegative::is_discriminant(7), true);
+        assert_eq!(
+            TestEnumNegative::from_primitive(-3),
+            TestEnumNegative::Value1
+        );
+        assert_eq!(TestEnumNegative::Value1.to_primitive(), -3);
     }
 }

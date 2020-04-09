@@ -21,9 +21,12 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
     {
         panic!("cannot have cenum trait on enums with fields")
     }
-    let mut pairs: Vec<(String, usize)> = vec![];
+    let mut pairs: Vec<(String, i64)> = vec![];
     let mut current_discriminant = 0;
+    let mut first_variant = true;
     for variant in &variants {
+        let is_first_variant = first_variant;
+        first_variant = false;
         let discriminant = match &variant.discriminant {
             Some((
                 _,
@@ -32,15 +35,41 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
                     ..
                 }),
             )) => {
-                let discriminant = lit_int.base10_parse::<usize>().unwrap();
-                if discriminant < current_discriminant {
+                let discriminant = lit_int.base10_parse::<i64>().unwrap();
+                if !is_first_variant && discriminant < current_discriminant {
                     panic!("attempted to reuse discriminant");
                 }
                 current_discriminant = discriminant + 1;
                 discriminant
             }
+            Some((
+                _,
+                Expr::Unary(ExprUnary {
+                    op: UnOp::Neg(_),
+                    expr,
+                    ..
+                })
+            )) => {
+                match &**expr {
+                    Expr::Lit(ExprLit {
+                        lit: Lit::Int(lit_int),
+                        ..
+                    }) => {
+                        let discriminant = -lit_int.base10_parse::<i64>().unwrap();
+                        if !is_first_variant && discriminant < current_discriminant {
+                            panic!("attempted to reuse discriminant");
+                        }
+                        current_discriminant = discriminant + 1;
+                        discriminant
+                    },
+                    _ => panic!("expected integer literal as discriminant")
+                }
+            },
             Some(_) => panic!("expected integer literal as discriminant"),
             None => {
+                if is_first_variant {
+                    current_discriminant = 0;
+                }
                 let discriminant = current_discriminant;
                 current_discriminant += 1;
                 discriminant
@@ -79,12 +108,12 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         #[derive(PartialEq, Eq, Hash, Clone, Debug)]
         #ast
 
-        static #data_name: &'static [(#name, usize)] = &#pairs_parsed;
-        static #cache_name: ::std::sync::atomic::AtomicPtr<::std::collections::HashMap<#name, usize>> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
-        static #icache_name: ::std::sync::atomic::AtomicPtr<::std::collections::HashMap<usize, #name>> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
+        static #data_name: &'static [(#name, i64)] = &#pairs_parsed;
+        static #cache_name: ::std::sync::atomic::AtomicPtr<::std::collections::HashMap<#name, i64>> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
+        static #icache_name: ::std::sync::atomic::AtomicPtr<::std::collections::HashMap<i64, #name>> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
 
         #[allow(non_snake_case)]
-        fn #get_cache_name() -> &'static ::std::collections::HashMap<#name, usize> {
+        fn #get_cache_name() -> &'static ::std::collections::HashMap<#name, i64> {
             unsafe {
                 if #cache_name.load(::std::sync::atomic::Ordering::Relaxed).is_null() {
                     let mut map_built = Box::new(::std::collections::HashMap::new());
@@ -101,7 +130,7 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         }
 
         #[allow(non_snake_case)]
-        fn #get_icache_name() -> &'static ::std::collections::HashMap<usize, #name> {
+        fn #get_icache_name() -> &'static ::std::collections::HashMap<i64, #name> {
             unsafe {
                 if #icache_name.load(::std::sync::atomic::Ordering::Relaxed).is_null() {
                     let mut map_built = Box::new(::std::collections::HashMap::new());
@@ -118,15 +147,15 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         }
 
         impl Cenum for #name {
-            fn to_primitive(&self) -> usize {
+            fn to_primitive(&self) -> i64 {
                 return *#get_cache_name().get(self).unwrap();
             }
 
-            fn from_primitive(value: usize) -> #name {
+            fn from_primitive(value: i64) -> #name {
                 return #get_icache_name().get(&value).unwrap().clone();
             }
 
-            fn is_discriminant(value: usize) -> bool {
+            fn is_discriminant(value: i64) -> bool {
                 return #get_icache_name().get(&value).is_some();
             }
         }
