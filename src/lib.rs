@@ -140,11 +140,11 @@ fn impl_cenum(ast: &DeriveInput) -> TokenStream {
         #ast
 
         impl #name {
-            fn into_primitive(self) -> #repr_ident {
+            pub fn into_primitive(self) -> #repr_ident {
                 self as #repr_ident
             }
 
-            fn from_primitive(value: #repr_ident) -> Option<Self> {
+            pub fn from_primitive(value: #repr_ident) -> Option<Self> {
                 #pairs_parsed
             }
         }
