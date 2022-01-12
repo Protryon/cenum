@@ -1,6 +1,6 @@
 [package]
 name = "cenum"
-version = "1.0.3"
+version = "1.1.0"
 authors = ["Protryon <max.bruce12@gmail.com>"]
 license = "GPL-3.0-or-later"
 edition = "2018"
@@ -8,6 +8,9 @@ repository = "https://github.com/Protryon/cenum"
 description = "A rust derive macro for C-style primitive enums."
 keywords = [ "primitive", "enum" ]
 
+[lib]
+proc-macro = true
+
 [dependencies]
-cenum-derive = { path = "./cenum_derive/", version = "1.0.3" }
-num = "0.2.1"
+syn = { version = "1.0", features = ["extra-traits", "full"] }
+quote = "1.0"

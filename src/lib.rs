@@ -1,82 +1,154 @@
-extern crate self as cenum;
-pub use cenum_derive::cenum;
-pub use num;
+extern crate proc_macro;
+use crate::proc_macro::TokenStream;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
+use syn::*;
 
-pub trait Cenum {
-    fn to_primitive(&self) -> i64;
-    fn from_primitive(value: i64) -> Self;
-    fn is_discriminant(value: i64) -> bool;
+#[proc_macro_attribute]
+pub fn cenum(_metadata: TokenStream, input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    impl_cenum(&ast)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cenum]
-    enum TestEnumBasic {
-        Value1,
-        Value2,
-        Value3,
+fn impl_cenum(ast: &DeriveInput) -> TokenStream {
+    let mut repr = "u32".to_string();
+    for attr in &ast.attrs {
+        if attr.path.segments.len() == 1 {
+            let segment = &attr.path.segments[0];
+            if &*segment.ident.to_string() == "repr" {
+                let inner_repr = attr.tokens.to_string();
+                if inner_repr.starts_with("(") && inner_repr.ends_with(")") {
+                    let inner_repr = &inner_repr[1..inner_repr.len() - 1];
+                    match inner_repr {
+                        "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64"
+                        | "i128" => repr = inner_repr.to_string(),
+                        _ => {
+                            return quote_spanned! {
+                                segment.ident.span() =>
+                                compile_error!("invalid repr for cenum (expected u* or i*)");
+                            }
+                            .into();
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    #[test]
-    fn can_serialize() {
-        assert_eq!(TestEnumBasic::Value2.to_primitive(), 1);
+    let name = &ast.ident;
+    let variants = match &ast.data {
+        Data::Enum(DataEnum { variants, .. }) => variants.into_iter().collect::<Vec<&Variant>>(),
+        _ => panic!("not deriving cenum on an enum"),
+    };
+    if variants
+        .iter()
+        .any(|variant| variant.fields != Fields::Unit)
+    {
+        panic!("cannot have cenum trait on enums with fields")
+    }
+    let mut pairs: Vec<(String, i128)> = vec![];
+    //todo: use better discriminant parsing to avoid limiting us to bounds of i128
+    let mut current_discriminant = 0;
+    let mut first_variant = true;
+    for variant in &variants {
+        let is_first_variant = first_variant;
+        first_variant = false;
+        let discriminant = match &variant.discriminant {
+            Some((
+                _,
+                Expr::Lit(ExprLit {
+                    lit: Lit::Int(lit_int),
+                    ..
+                }),
+            )) => {
+                let discriminant = lit_int.base10_parse::<i128>().unwrap();
+                if !is_first_variant && discriminant < current_discriminant {
+                    return quote_spanned! {
+                        variant.discriminant.as_ref().unwrap().1.span() =>
+                        compile_error!("attempted to reuse discriminant");
+                    }
+                    .into();
+                }
+                current_discriminant = discriminant + 1;
+                discriminant
+            }
+            Some((
+                _,
+                Expr::Unary(ExprUnary {
+                    op: UnOp::Neg(_),
+                    expr,
+                    ..
+                }),
+            )) => match &**expr {
+                Expr::Lit(ExprLit {
+                    lit: Lit::Int(lit_int),
+                    ..
+                }) => {
+                    let discriminant = -lit_int.base10_parse::<i128>().unwrap();
+                    if !is_first_variant && discriminant < current_discriminant {
+                        return quote_spanned! {
+                            variant.discriminant.as_ref().unwrap().1.span() =>
+                            compile_error!("attempted to reuse discriminant");
+                        }
+                        .into();
+                    }
+                    current_discriminant = discriminant + 1;
+                    discriminant
+                }
+                _ => {
+                    return quote_spanned! {
+                        variant.discriminant.as_ref().unwrap().1.span() =>
+                        compile_error!("expected integer literal as discriminant");
+                    }
+                    .into();
+                }
+            },
+            Some(_) => {
+                return quote_spanned! {
+                    variant.discriminant.as_ref().unwrap().1.span() =>
+                    compile_error!("expected integer literal as discriminant");
+                }
+                .into();
+            }
+            None => {
+                if is_first_variant {
+                    current_discriminant = 0;
+                }
+                let discriminant = current_discriminant;
+                current_discriminant += 1;
+                discriminant
+            }
+        };
+        pairs.push((variant.ident.to_string(), discriminant));
     }
 
-    #[test]
-    fn can_deserialize() {
-        assert_eq!(TestEnumBasic::from_primitive(1), TestEnumBasic::Value2);
-    }
+    let pairs_formatted = format!(
+        "match value {{ {}\n_ => None, }}",
+        pairs
+            .iter()
+            .map(|(key, value)| format!("{} => Some({}::{}),", value, name.to_string(), key))
+            .collect::<Vec<String>>()
+            .join("\n")
+    );
+    let pairs_parsed: ExprMatch = parse_str(&pairs_formatted).unwrap();
 
-    #[test]
-    fn can_check() {
-        assert_eq!(TestEnumBasic::is_discriminant(9), false);
-        assert_eq!(TestEnumBasic::is_discriminant(2), true);
-    }
+    let repr_ident = Ident::new(&*repr, name.span());
 
-    #[cenum]
-    enum TestEnumDeterminant {
-        Value1,
-        Value2 = 7,
-        Value3,
-    }
+    let gen = quote! {
 
-    #[test]
-    fn can_serialize_determinant() {
-        assert_eq!(TestEnumDeterminant::Value3.to_primitive(), 8);
-    }
+        #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+        #ast
 
-    #[test]
-    fn can_deserialize_determinant() {
-        assert_eq!(
-            TestEnumDeterminant::from_primitive(8),
-            TestEnumDeterminant::Value3
-        );
-    }
+        impl #name {
+            fn into_primitive(self) -> #repr_ident {
+                self as #repr_ident
+            }
 
-    #[test]
-    fn can_check_determinant() {
-        assert_eq!(TestEnumDeterminant::is_discriminant(8), true);
-        assert_eq!(TestEnumDeterminant::is_discriminant(0), true);
-        assert_eq!(TestEnumDeterminant::is_discriminant(3), false);
-        assert_eq!(TestEnumDeterminant::is_discriminant(9), false);
-    }
+            fn from_primitive(value: #repr_ident) -> Option<Self> {
+                #pairs_parsed
+            }
+        }
 
-    #[cenum]
-    enum TestEnumNegative {
-        Value1 = -3,
-        Value2 = 7,
-    }
-
-    #[test]
-    fn enum_negative() {
-        assert_eq!(TestEnumNegative::is_discriminant(-3), true);
-        assert_eq!(TestEnumNegative::is_discriminant(7), true);
-        assert_eq!(
-            TestEnumNegative::from_primitive(-3),
-            TestEnumNegative::Value1
-        );
-        assert_eq!(TestEnumNegative::Value1.to_primitive(), -3);
-    }
+    };
+    gen.into()
 }
